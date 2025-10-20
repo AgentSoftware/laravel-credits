@@ -1,6 +1,6 @@
 <?php
 
-namespace Climactic\Credits\Exceptions;
+namespace AgentSoftware\Credits\Exceptions;
 
 use Exception;
 

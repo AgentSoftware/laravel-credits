@@ -1,6 +1,6 @@
 <?php
 
-namespace Climactic\Credits\Models;
+namespace AgentSoftware\Credits\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;

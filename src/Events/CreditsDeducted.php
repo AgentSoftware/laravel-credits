@@ -1,6 +1,6 @@
 <?php
 
-namespace Climactic\Credits\Events;
+namespace AgentSoftware\Credits\Events;
 
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Database\Eloquent\Model;

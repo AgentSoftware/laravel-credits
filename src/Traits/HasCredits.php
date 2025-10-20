@@ -1,12 +1,12 @@
 <?php
 
-namespace Climactic\Credits\Traits;
+namespace AgentSoftware\Credits\Traits;
 
-use Climactic\Credits\Events\CreditsAdded;
-use Climactic\Credits\Events\CreditsDeducted;
-use Climactic\Credits\Events\CreditsTransferred;
-use Climactic\Credits\Exceptions\InsufficientCreditsException;
-use Climactic\Credits\Models\Credit;
+use AgentSoftware\Credits\Events\CreditsAdded;
+use AgentSoftware\Credits\Events\CreditsDeducted;
+use AgentSoftware\Credits\Events\CreditsTransferred;
+use AgentSoftware\Credits\Exceptions\InsufficientCreditsException;
+use AgentSoftware\Credits\Models\Credit;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Carbon;
@@ -41,7 +41,7 @@ trait HasCredits
      * @param  string|null  $description  Optional human-readable description for the transaction.
      * @param  string|null  $creditType  Optional credit type/category for the transaction.
      * @param  array  $metadata  Optional arbitrary metadata stored with the transaction.
-     * @return \Climactic\Credits\Models\Credit The created Credit record with the updated running balance.
+     * @return \AgentSoftware\Credits\Models\Credit The created Credit record with the updated running balance.
      *
      * @throws \InvalidArgumentException If $amount is not greater than 0.
      */

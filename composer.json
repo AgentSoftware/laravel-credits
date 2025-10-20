@@ -1,5 +1,5 @@
 {
-    "name": "climactic/laravel-credits",
+    "name": "agentsoftware/laravel-credits",
     "description": "A ledger-based Laravel package for managing credit-based systems in your application.",
     "keywords": [
         "laravel",
@@ -32,12 +32,12 @@
     },
     "autoload": {
         "psr-4": {
-            "Climactic\\Credits\\": "src/"
+            "AgentSoftware\\Credits\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Climactic\\Credits\\Tests\\": "tests/",
+            "AgentSoftware\\Credits\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/"
         }
     },
@@ -79,7 +79,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Climactic\\Credits\\CreditsServiceProvider"
+                "AgentSoftware\\Credits\\CreditsServiceProvider"
             ]
         }
     },

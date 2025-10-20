@@ -1,5 +1,5 @@
 <?php
 
-use Climactic\Credits\Tests\TestCase;
+use AgentSoftware\Credits\Tests\TestCase;
 
 uses(TestCase::class)->in(__DIR__);

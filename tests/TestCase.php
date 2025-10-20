@@ -1,8 +1,8 @@
 <?php
 
-namespace Climactic\Credits\Tests;
+namespace AgentSoftware\Credits\Tests;
 
-use Climactic\Credits\CreditsServiceProvider;
+use AgentSoftware\Credits\CreditsServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 class TestCase extends Orchestra

@@ -1,8 +1,8 @@
 <?php
 
-namespace Climactic\Credits\Tests\TestModels;
+namespace AgentSoftware\Credits\Tests\TestModels;
 
-use Climactic\Credits\Traits\HasCredits;
+use AgentSoftware\Credits\Traits\HasCredits;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable

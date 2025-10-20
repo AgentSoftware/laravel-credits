@@ -1,7 +1,7 @@
 <?php
 
-use Climactic\Credits\Models\Credit;
-use Climactic\Credits\Tests\TestModels\User;
+use AgentSoftware\Credits\Models\Credit;
+use AgentSoftware\Credits\Tests\TestModels\User;
 
 beforeEach(function () {
     $this->user = User::create([

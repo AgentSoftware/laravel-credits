@@ -1,10 +1,10 @@
 <?php
 
-use Climactic\Credits\Events\CreditsAdded;
-use Climactic\Credits\Events\CreditsDeducted;
-use Climactic\Credits\Events\CreditsTransferred;
-use Climactic\Credits\Exceptions\InsufficientCreditsException;
-use Climactic\Credits\Tests\TestModels\User;
+use AgentSoftware\Credits\Events\CreditsAdded;
+use AgentSoftware\Credits\Events\CreditsDeducted;
+use AgentSoftware\Credits\Events\CreditsTransferred;
+use AgentSoftware\Credits\Exceptions\InsufficientCreditsException;
+use AgentSoftware\Credits\Tests\TestModels\User;
 use Illuminate\Support\Facades\Event;
 
 beforeEach(function () {

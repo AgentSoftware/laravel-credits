@@ -1,6 +1,6 @@
 <?php
 
-namespace Climactic\Credits;
+namespace AgentSoftware\Credits;
 
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
