@@ -16,6 +16,7 @@ class CreditsAdded implements ShouldDispatchAfterCommit
      * @param  float  $newBalance  Resulting balance after the addition.
      * @param  string|null  $description  Optional description of the transaction.
      * @param  array  $metadata  Additional contextual data associated with the event.
+     * @param  string|null  $creditType  Optional credit type/category for the transaction.
      */
     public function __construct(
         public Model $creditable,
@@ -23,6 +24,7 @@ class CreditsAdded implements ShouldDispatchAfterCommit
         public float $amount,
         public float $newBalance,
         public ?string $description,
-        public array $metadata
+        public array $metadata,
+        public ?string $creditType = null
     ) {}
 }

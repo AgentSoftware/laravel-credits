@@ -15,13 +15,16 @@ return new class extends Migration
             $table->decimal('running_balance', 10, 2);
             $table->string('description', 255)->nullable();
             $table->string('type');
+            $table->string('credit_type', 100)->nullable();
             $table->json('metadata')->nullable();
             $table->timestamps();
 
             $table->index('type');
+            $table->index('credit_type');
             $table->index('created_at');
             $table->index(['creditable_id', 'creditable_type', 'created_at']);
             $table->index(['creditable_id', 'creditable_type', 'running_balance']);
+            $table->index(['creditable_id', 'creditable_type', 'credit_type']);
         });
     }
 

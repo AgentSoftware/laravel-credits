@@ -146,7 +146,7 @@ it('maintains accurate running balance', function () {
 it('dispatches event when credits are added', function () {
     Event::fake();
 
-    $transaction = $this->user->creditAdd(100.00, 'Test credit', ['source' => 'test']);
+    $transaction = $this->user->creditAdd(100.00, 'Test credit', null, ['source' => 'test']);
 
     Event::assertDispatched(CreditsAdded::class, function ($event) use ($transaction) {
         return $event->creditable->is($this->user)
@@ -164,7 +164,7 @@ it('dispatches event when credits are deducted', function () {
     $this->user->creditAdd(100.00);
     Event::fake(); // Reset fake after initial credit
 
-    $transaction = $this->user->creditDeduct(50.00, 'Test debit', ['reason' => 'purchase']);
+    $transaction = $this->user->creditDeduct(50.00, 'Test debit', null, ['reason' => 'purchase']);
 
     Event::assertDispatched(CreditsDeducted::class, function ($event) use ($transaction) {
         return $event->creditable->is($this->user)
@@ -187,7 +187,7 @@ it('dispatches event when credits are transferred', function () {
     $this->user->creditAdd(100.00);
     Event::fake(); // Reset fake after initial credit
 
-    $result = $this->user->creditTransfer($recipient, 50.00, 'Test transfer', ['type' => 'gift']);
+    $result = $this->user->creditTransfer($recipient, 50.00, 'Test transfer', null, ['type' => 'gift']);
 
     Event::assertDispatched(CreditsTransferred::class, function ($event) use ($recipient, $result) {
         return $event->sender->is($this->user)
@@ -821,7 +821,7 @@ describe('edge cases', function () {
 
     it('handles metadata edge cases', function () {
         // Test with empty metadata
-        $t1 = $this->user->creditAdd(10.00, 'Empty metadata', []);
+        $t1 = $this->user->creditAdd(10.00, 'Empty metadata', null, []);
         expect($t1->metadata)->toBe([]);
 
         // Test with large metadata
@@ -831,7 +831,7 @@ describe('edge cases', function () {
             'items' => array_fill(0, 100, ['id' => 1, 'name' => 'Item']),
             'notes' => str_repeat('x', 1000),
         ];
-        $t2 = $this->user->creditAdd(20.00, 'Large metadata', $largeMetadata);
+        $t2 = $this->user->creditAdd(20.00, 'Large metadata', null, $largeMetadata);
         expect($t2->metadata)->toBe($largeMetadata);
 
         // Test with nested arrays
@@ -842,7 +842,248 @@ describe('edge cases', function () {
                 ],
             ],
         ];
-        $t3 = $this->user->creditAdd(30.00, 'Nested metadata', $nestedMetadata);
+        $t3 = $this->user->creditAdd(30.00, 'Nested metadata', null, $nestedMetadata);
         expect($t3->metadata)->toBe($nestedMetadata);
+    });
+});
+
+// Credit Type functionality tests
+describe('credit types', function () {
+    it('can add credits with a credit type', function () {
+        $transaction = $this->user->creditAdd(100.00, 'AI Image Generation', 'AI_IMAGE_GENERATION');
+
+        expect((float) $transaction->amount)->toEqual(100.00)
+            ->and($transaction->type)->toBe('credit')
+            ->and($transaction->credit_type)->toBe('AI_IMAGE_GENERATION')
+            ->and((float) $transaction->running_balance)->toEqual(100.00)
+            ->and((float) $this->user->creditBalance())->toEqual(100.00);
+    });
+
+    it('can deduct credits with a credit type', function () {
+        $this->user->creditAdd(100.00, 'Initial balance');
+        $transaction = $this->user->creditDeduct(50.00, 'Referral bonus used', 'REFERRALS');
+
+        expect((float) $transaction->amount)->toEqual(50.00)
+            ->and($transaction->type)->toBe('debit')
+            ->and($transaction->credit_type)->toBe('REFERRALS')
+            ->and((float) $transaction->running_balance)->toEqual(50.00)
+            ->and((float) $this->user->creditBalance())->toEqual(50.00);
+    });
+
+    it('can get balance filtered by credit type', function () {
+        $this->user->creditAdd(100.00, 'AI Image Generation', 'AI_IMAGE_GENERATION');
+        $this->user->creditAdd(50.00, 'Referral bonus', 'REFERRALS');
+        $this->user->creditAdd(25.00, 'General credits');
+
+        expect($this->user->creditBalance())->toBe(175.00)
+            ->and($this->user->creditBalance('AI_IMAGE_GENERATION'))->toBe(100.00)
+            ->and($this->user->creditBalance('REFERRALS'))->toBe(50.00)
+            ->and($this->user->creditBalance('NONEXISTENT'))->toBe(0.00);
+    });
+
+    it('can get transaction history filtered by credit type', function () {
+        $this->user->creditAdd(100.00, 'AI Image Gen 1', 'AI_IMAGE_GENERATION');
+        $this->user->creditAdd(50.00, 'Referral bonus', 'REFERRALS');
+        $this->user->creditDeduct(25.00, 'AI Image Gen usage', 'AI_IMAGE_GENERATION');
+        $this->user->creditAdd(30.00, 'General credits');
+
+        $allHistory = $this->user->creditHistory(10);
+        $aiHistory = $this->user->creditHistory(10, 'desc', 'AI_IMAGE_GENERATION');
+        $referralHistory = $this->user->creditHistory(10, 'desc', 'REFERRALS');
+
+        expect($allHistory)->toHaveCount(4)
+            ->and($aiHistory)->toHaveCount(2)
+            ->and($referralHistory)->toHaveCount(1)
+            ->and($aiHistory->first()->description)->toBe('AI Image Gen usage')
+            ->and($referralHistory->first()->description)->toBe('Referral bonus');
+    });
+
+    it('can check if has enough credits for specific type', function () {
+        $this->user->creditAdd(100.00, 'AI credits', 'AI_IMAGE_GENERATION');
+        $this->user->creditAdd(50.00, 'Referral bonus', 'REFERRALS');
+
+        expect($this->user->hasCredits(75.00, 'AI_IMAGE_GENERATION'))->toBeTrue()
+            ->and($this->user->hasCredits(125.00, 'AI_IMAGE_GENERATION'))->toBeFalse()
+            ->and($this->user->hasCredits(30.00, 'REFERRALS'))->toBeTrue()
+            ->and($this->user->hasCredits(75.00, 'REFERRALS'))->toBeFalse()
+            ->and($this->user->hasCredits(10.00, 'NONEXISTENT'))->toBeFalse();
+    });
+
+    it('can get historical balance filtered by credit type', function () {
+        $beforeTimestamp = now()->subSeconds(30);
+
+        $this->user->creditAdd(100.00, 'AI credits', 'AI_IMAGE_GENERATION');
+        $this->user->creditAdd(50.00, 'Referral bonus', 'REFERRALS');
+
+        $afterTimestamp = now()->addSeconds(30);
+
+        expect($this->user->creditBalanceAt($beforeTimestamp))->toBe(0.00)
+            ->and($this->user->creditBalanceAt($afterTimestamp))->toBe(150.00)
+            ->and($this->user->creditBalanceAt($afterTimestamp, 'AI_IMAGE_GENERATION'))->toBe(100.00)
+            ->and($this->user->creditBalanceAt($afterTimestamp, 'REFERRALS'))->toBe(50.00)
+            ->and($this->user->creditBalanceAt($afterTimestamp, 'NONEXISTENT'))->toBe(0.00);
+    });
+
+    it('can transfer credits with a credit type', function () {
+        $recipient = User::create([
+            'name' => 'Recipient User',
+            'email' => 'recipient@example.com',
+        ]);
+
+        $this->user->creditAdd(100.00, 'AI credits', 'AI_IMAGE_GENERATION');
+        $result = $this->user->creditTransfer($recipient, 50.00, 'Sharing AI credits', 'AI_IMAGE_GENERATION');
+
+        expect($result['sender_balance'])->toBe(50.00)
+            ->and($result['recipient_balance'])->toBe(50.00);
+
+        // Check that both debit and credit transactions have the correct type
+        $senderTransaction = $this->user->creditHistory(1)->first();
+        $recipientTransaction = $recipient->creditHistory(1)->first();
+
+        expect($senderTransaction->credit_type)->toBe('AI_IMAGE_GENERATION')
+            ->and($senderTransaction->type)->toBe('debit')
+            ->and($recipientTransaction->credit_type)->toBe('AI_IMAGE_GENERATION')
+            ->and($recipientTransaction->type)->toBe('credit');
+    });
+
+    it('dispatches events with credit type when credits are added', function () {
+        Event::fake();
+
+        $transaction = $this->user->creditAdd(100.00, 'AI Image Generation', 'AI_IMAGE_GENERATION', ['source' => 'test']);
+
+        Event::assertDispatched(CreditsAdded::class, function ($event) use ($transaction) {
+            return $event->creditable->is($this->user)
+                && $event->transactionId === $transaction->id
+                && $event->amount === 100.00
+                && $event->newBalance === 100.00
+                && $event->description === 'AI Image Generation'
+                && $event->metadata === ['source' => 'test']
+                && $event->creditType === 'AI_IMAGE_GENERATION';
+        });
+    });
+
+    it('dispatches events with credit type when credits are deducted', function () {
+        Event::fake();
+
+        $this->user->creditAdd(100.00);
+        Event::fake(); // Reset fake after initial credit
+
+        $transaction = $this->user->creditDeduct(50.00, 'AI usage', 'AI_IMAGE_GENERATION', ['reason' => 'generation']);
+
+        Event::assertDispatched(CreditsDeducted::class, function ($event) use ($transaction) {
+            return $event->creditable->is($this->user)
+                && $event->transactionId === $transaction->id
+                && $event->amount === 50.00
+                && $event->newBalance === 50.00
+                && $event->description === 'AI usage'
+                && $event->metadata === ['reason' => 'generation']
+                && $event->creditType === 'AI_IMAGE_GENERATION';
+        });
+    });
+
+    it('dispatches events with credit type when credits are transferred', function () {
+        Event::fake();
+
+        $recipient = User::create([
+            'name' => 'Recipient User',
+            'email' => 'transfer.recipient@example.com',
+        ]);
+
+        $this->user->creditAdd(100.00);
+        Event::fake(); // Reset fake after initial credit
+
+        $result = $this->user->creditTransfer($recipient, 50.00, 'AI credit share', 'AI_IMAGE_GENERATION', ['type' => 'gift']);
+
+        Event::assertDispatched(CreditsTransferred::class, function ($event) use ($recipient, $result) {
+            return $event->sender->is($this->user)
+                && $event->recipient->is($recipient)
+                && $event->amount === 50.00
+                && $event->senderNewBalance === $result['sender_balance']
+                && $event->recipientNewBalance === $result['recipient_balance']
+                && $event->description === 'AI credit share'
+                && $event->metadata === ['type' => 'gift']
+                && $event->creditType === 'AI_IMAGE_GENERATION';
+        });
+    });
+
+    it('maintains backward compatibility when no credit type is specified', function () {
+        $transaction1 = $this->user->creditAdd(100.00, 'General credit');
+        $transaction2 = $this->user->creditDeduct(25.00, 'General debit');
+
+        expect($transaction1->credit_type)->toBeNull()
+            ->and($transaction2->credit_type)->toBeNull()
+            ->and($this->user->creditBalance())->toBe(75.00);
+
+        // History without credit type filter should include all transactions
+        $history = $this->user->creditHistory();
+        expect($history)->toHaveCount(2);
+
+        // Balance queries should work the same as before
+        expect($this->user->creditBalance())->toBe(75.00);
+    });
+
+    it('works with deprecated methods and credit types', function () {
+        // Test deprecated methods still work with credit types
+        $transaction1 = $this->user->addCredits(100.00, 'Deprecated add', 'AI_IMAGE_GENERATION');
+        $transaction2 = $this->user->deductCredits(25.00, 'Deprecated deduct', 'AI_IMAGE_GENERATION');
+
+        expect($transaction1->credit_type)->toBe('AI_IMAGE_GENERATION')
+            ->and($transaction2->credit_type)->toBe('AI_IMAGE_GENERATION')
+            ->and($this->user->getCurrentBalance('AI_IMAGE_GENERATION'))->toBe(75.00);
+
+        $recipient = User::create(['name' => 'Test', 'email' => 'deprecated@test.com']);
+        $result = $this->user->transferCredits($recipient, 25.00, 'Deprecated transfer', 'AI_IMAGE_GENERATION');
+
+        expect($result['sender_balance'])->toBe(50.00)
+            ->and($result['recipient_balance'])->toBe(25.00);
+
+        // Test deprecated query methods
+        $history = $this->user->getTransactionHistory(10, 'desc', 'AI_IMAGE_GENERATION');
+        expect($history)->toHaveCount(3); // add, deduct, deduct (from transfer)
+
+        expect($this->user->hasEnoughCredits(40.00, 'AI_IMAGE_GENERATION'))->toBeTrue()
+            ->and($this->user->hasEnoughCredits(60.00, 'AI_IMAGE_GENERATION'))->toBeFalse();
+
+        $balance = $this->user->getBalanceAsOf(now(), 'AI_IMAGE_GENERATION');
+        expect($balance)->toBe(50.00);
+    });
+
+    it('handles mixed credit types correctly', function () {
+        // Create transactions with different credit types
+        $this->user->creditAdd(100.00, 'AI credits', 'AI_IMAGE_GENERATION');
+        $this->user->creditAdd(50.00, 'Referral bonus', 'REFERRALS');
+        $this->user->creditAdd(25.00, 'General credits'); // null credit_type
+        $this->user->creditDeduct(30.00, 'AI usage', 'AI_IMAGE_GENERATION');
+
+        // Total balance should be sum of all transactions
+        expect($this->user->creditBalance())->toBe(145.00);
+
+        // Type-specific balances
+        expect($this->user->creditBalance('AI_IMAGE_GENERATION'))->toBe(70.00)
+            ->and($this->user->creditBalance('REFERRALS'))->toBe(50.00)
+            ->and($this->user->creditBalance(null))->toBe(25.00);
+
+        // History counts
+        expect($this->user->creditHistory(10))->toHaveCount(4)
+            ->and($this->user->creditHistory(10, 'desc', 'AI_IMAGE_GENERATION'))->toHaveCount(2)
+            ->and($this->user->creditHistory(10, 'desc', 'REFERRALS'))->toHaveCount(1);
+    });
+
+    it('handles credit type strings with special characters', function () {
+        $specialType = 'PREMIUM_TIER_2-BONUS@2024';
+
+        $transaction = $this->user->creditAdd(100.00, 'Special type test', $specialType);
+
+        expect($transaction->credit_type)->toBe($specialType)
+            ->and($this->user->creditBalance($specialType))->toBe(100.00);
+    });
+
+    it('handles very long credit type strings', function () {
+        $longType = str_repeat('VERY_LONG_CREDIT_TYPE_NAME_', 3) . 'END'; // 99 chars, within 100 limit
+
+        $transaction = $this->user->creditAdd(100.00, 'Long type test', $longType);
+
+        expect($transaction->credit_type)->toBe($longType)
+            ->and($this->user->creditBalance($longType))->toBe(100.00);
     });
 });

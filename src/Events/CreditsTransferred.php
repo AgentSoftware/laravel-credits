@@ -18,6 +18,7 @@ class CreditsTransferred implements ShouldDispatchAfterCommit
      * @param  float  $recipientNewBalance  Recipient's balance after the transfer.
      * @param  string|null  $description  Optional human-readable description of the transfer.
      * @param  array  $metadata  Additional arbitrary metadata associated with the transfer.
+     * @param  string|null  $creditType  Optional credit type/category for the transaction.
      */
     public function __construct(
         public int $transactionId,
@@ -27,6 +28,7 @@ class CreditsTransferred implements ShouldDispatchAfterCommit
         public float $senderNewBalance,
         public float $recipientNewBalance,
         public ?string $description,
-        public array $metadata
+        public array $metadata,
+        public ?string $creditType = null
     ) {}
 }

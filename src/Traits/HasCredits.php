@@ -39,18 +39,19 @@ trait HasCredits
      *
      * @param  float  $amount  The amount to add; must be greater than 0.
      * @param  string|null  $description  Optional human-readable description for the transaction.
+     * @param  string|null  $creditType  Optional credit type/category for the transaction.
      * @param  array  $metadata  Optional arbitrary metadata stored with the transaction.
      * @return \Climactic\Credits\Models\Credit The created Credit record with the updated running balance.
      *
      * @throws \InvalidArgumentException If $amount is not greater than 0.
      */
-    public function creditAdd(float $amount, ?string $description = null, array $metadata = []): Credit
+    public function creditAdd(float $amount, ?string $description = null, ?string $creditType = null, array $metadata = []): Credit
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0.');
         }
 
-        return DB::transaction(function () use ($amount, $description, $metadata) {
+        return DB::transaction(function () use ($amount, $description, $creditType, $metadata) {
             $lastBalance = (float) ($this->credits()
                 ->lockForUpdate()
                 ->latest('id')
@@ -61,6 +62,7 @@ trait HasCredits
                 'amount' => $amount,
                 'description' => $description,
                 'type' => 'credit',
+                'credit_type' => $creditType,
                 'metadata' => $metadata,
                 'running_balance' => $newBalance,
             ]);
@@ -71,7 +73,8 @@ trait HasCredits
                 amount: $amount,
                 newBalance: $newBalance,
                 description: $description,
-                metadata: $metadata
+                metadata: $metadata,
+                creditType: $creditType
             ));
 
             return $credit;
@@ -83,11 +86,11 @@ trait HasCredits
      *
      * @deprecated Use creditAdd() instead. Will be removed in v2.0
      */
-    public function addCredits(float $amount, ?string $description = null, array $metadata = []): Credit
+    public function addCredits(float $amount, ?string $description = null, ?string $creditType = null, array $metadata = []): Credit
     {
         trigger_error('Method addCredits() is deprecated. Use creditAdd() instead.', E_USER_DEPRECATED);
 
-        return $this->creditAdd($amount, $description, $metadata);
+        return $this->creditAdd($amount, $description, $creditType, $metadata);
     }
 
     /**
@@ -95,19 +98,20 @@ trait HasCredits
      *
      * @param  float  $amount  The amount to deduct; must be greater than 0.
      * @param  string|null  $description  Optional description for the transaction.
+     * @param  string|null  $creditType  Optional credit type/category for the transaction.
      * @param  array  $metadata  Optional metadata to attach to the transaction.
      * @return Credit The created Credit record representing the debit and its resulting running balance.
      *
      * @throws \InvalidArgumentException If $amount is not greater than 0.
      * @throws InsufficientCreditsException If negative balances are disallowed and the model has insufficient credits.
      */
-    public function creditDeduct(float $amount, ?string $description = null, array $metadata = []): Credit
+    public function creditDeduct(float $amount, ?string $description = null, ?string $creditType = null, array $metadata = []): Credit
     {
         if ($amount <= 0) {
             throw new \InvalidArgumentException('Amount must be greater than 0.');
         }
 
-        return DB::transaction(function () use ($amount, $description, $metadata) {
+        return DB::transaction(function () use ($amount, $description, $creditType, $metadata) {
             $lastBalance = (float) ($this->credits()
                 ->lockForUpdate()
                 ->latest('id')
@@ -122,6 +126,7 @@ trait HasCredits
                 'amount' => $amount,
                 'description' => $description,
                 'type' => 'debit',
+                'credit_type' => $creditType,
                 'metadata' => $metadata,
                 'running_balance' => $newBalance,
             ]);
@@ -132,7 +137,8 @@ trait HasCredits
                 amount: $amount,
                 newBalance: $newBalance,
                 description: $description,
-                metadata: $metadata
+                metadata: $metadata,
+                creditType: $creditType
             ));
 
             return $credit;
@@ -144,24 +150,45 @@ trait HasCredits
      *
      * @deprecated Use creditDeduct() instead. Will be removed in v2.0
      */
-    public function deductCredits(float $amount, ?string $description = null, array $metadata = []): Credit
+    public function deductCredits(float $amount, ?string $description = null, ?string $creditType = null, array $metadata = []): Credit
     {
         trigger_error('Method deductCredits() is deprecated. Use creditDeduct() instead.', E_USER_DEPRECATED);
 
-        return $this->creditDeduct($amount, $description, $metadata);
+        return $this->creditDeduct($amount, $description, $creditType, $metadata);
     }
 
     /**
      * Retrieve the model's current credit balance.
      *
+     * @param  string|null  $creditType  Optional credit type to filter by. Pass null explicitly to filter by transactions with no credit type.
      * @return float The most recent `running_balance` as a float, or 0.0 if no transactions exist.
      */
-    public function creditBalance(): float
+    public function creditBalance(?string $creditType = null): float
     {
-        // Use latest by ID to ensure correct order even with same timestamps
-        return (float) ($this->credits()
-            ->latest('id')
-            ->value('running_balance') ?? 0.0);
+        // Check if this is a call without any parameter (total balance) vs explicit null (filter by null credit_type)
+        $args = func_get_args();
+        $isFilteringByType = count($args) > 0;
+
+        if (!$isFilteringByType) {
+            // For total balance, get the latest running_balance
+            return (float) ($this->credits()
+                ->latest('id')
+                ->value('running_balance') ?? 0.0);
+        }
+
+        // For specific credit type (including explicit null), calculate sum of amounts for that type
+        $query = $this->credits();
+
+        if ($creditType === null) {
+            $query->whereNull('credit_type');
+        } else {
+            $query->where('credit_type', $creditType);
+        }
+
+        $credits = (clone $query)->where('type', 'credit')->sum('amount');
+        $debits = (clone $query)->where('type', 'debit')->sum('amount');
+
+        return (float) ($credits - $debits);
     }
 
     /**
@@ -169,11 +196,11 @@ trait HasCredits
      *
      * @deprecated Use creditBalance() instead. Will be removed in v2.0
      */
-    public function getCurrentBalance(): float
+    public function getCurrentBalance(?string $creditType = null): float
     {
         trigger_error('Method getCurrentBalance() is deprecated. Use creditBalance() instead.', E_USER_DEPRECATED);
 
-        return $this->creditBalance();
+        return $this->creditBalance($creditType);
     }
 
     /**
@@ -186,17 +213,18 @@ trait HasCredits
      * @param  self  $recipient  The model receiving the credits.
      * @param  float  $amount  The amount of credits to transfer (must be greater than zero).
      * @param  string|null  $description  Optional human-readable description for the transaction.
+     * @param  string|null  $creditType  Optional credit type/category for the transaction.
      * @param  array  $metadata  Optional arbitrary metadata to attach to the transaction.
      * @return array{
      *     sender_balance: float,
      *     recipient_balance: float
      * } Associative array containing the sender's and recipient's balances after the transfer.
      */
-    public function creditTransfer(self $recipient, float $amount, ?string $description = null, array $metadata = []): array
+    public function creditTransfer(self $recipient, float $amount, ?string $description = null, ?string $creditType = null, array $metadata = []): array
     {
         $result = [];
 
-        $lastTransaction = DB::transaction(function () use ($recipient, $amount, $description, $metadata, &$result) {
+        $lastTransaction = DB::transaction(function () use ($recipient, $amount, $description, $creditType, $metadata, &$result) {
             // Pre-lock both models in deterministic order to prevent deadlocks
             // Sort by model type first, then by ID to ensure consistent lock acquisition order
             $models = collect([$this, $recipient])
@@ -211,8 +239,8 @@ trait HasCredits
             }
 
             // Now perform the actual transfer operations
-            $this->creditDeduct($amount, $description, $metadata);
-            $transaction = $recipient->creditAdd($amount, $description, $metadata);
+            $this->creditDeduct($amount, $description, $creditType, $metadata);
+            $transaction = $recipient->creditAdd($amount, $description, $creditType, $metadata);
 
             $senderBalance = $this->creditBalance();
             $recipientBalance = $recipient->creditBalance();
@@ -233,7 +261,8 @@ trait HasCredits
             senderNewBalance: $result['sender_balance'],
             recipientNewBalance: $result['recipient_balance'],
             description: $description,
-            metadata: $metadata
+            metadata: $metadata,
+            creditType: $creditType
         ));
 
         return $result;
@@ -244,11 +273,11 @@ trait HasCredits
      *
      * @deprecated Use creditTransfer() instead. Will be removed in v2.0
      */
-    public function transferCredits(self $recipient, float $amount, ?string $description = null, array $metadata = []): array
+    public function transferCredits(self $recipient, float $amount, ?string $description = null, ?string $creditType = null, array $metadata = []): array
     {
         trigger_error('Method transferCredits() is deprecated. Use creditTransfer() instead.', E_USER_DEPRECATED);
 
-        return $this->creditTransfer($recipient, $amount, $description, $metadata);
+        return $this->creditTransfer($recipient, $amount, $description, $creditType, $metadata);
     }
 
     /**
@@ -260,9 +289,10 @@ trait HasCredits
      *
      * @param  int  $limit  Maximum number of records to return (clamped to 1..1000).
      * @param  string  $order  Sort direction, either `'asc'` or `'desc'` (invalid values default to `'desc'`).
+     * @param  string|null  $creditType  Optional credit type to filter by.
      * @return \Illuminate\Database\Eloquent\Collection|EloquentCollection A collection of Credit records matching the query.
      */
-    public function creditHistory(int $limit = 10, string $order = 'desc'): EloquentCollection
+    public function creditHistory(int $limit = 10, string $order = 'desc', ?string $creditType = null): EloquentCollection
     {
         // Sanitize order direction - only allow 'asc' or 'desc'
         $order = strtolower($order);
@@ -273,7 +303,13 @@ trait HasCredits
         // Clamp limit to a positive integer between 1 and 1000
         $limit = min(max((int) $limit, 1), 1000);
 
-        return $this->credits()
+        $query = $this->credits();
+
+        if ($creditType !== null) {
+            $query->where('credit_type', $creditType);
+        }
+
+        return $query
             ->orderBy('created_at', $order)
             ->orderBy('id', $order) // Tie-break on ID for deterministic ordering
             ->limit($limit)
@@ -285,23 +321,27 @@ trait HasCredits
      *
      * @param  int  $limit  Maximum number of records to return (clamped to 1..1000).
      * @param  string  $order  Sort direction, either 'asc' or 'desc' (defaults to 'desc').
+     * @param  string|null  $creditType  Optional credit type to filter by.
      * @return \Illuminate\Database\Eloquent\Collection Collection of Credit records.
      *
      * @deprecated Use creditHistory() instead. Will be removed in v2.0.
      */
-    public function getTransactionHistory(int $limit = 10, string $order = 'desc'): EloquentCollection
+    public function getTransactionHistory(int $limit = 10, string $order = 'desc', ?string $creditType = null): EloquentCollection
     {
         trigger_error('Method getTransactionHistory() is deprecated. Use creditHistory() instead.', E_USER_DEPRECATED);
 
-        return $this->creditHistory($limit, $order);
+        return $this->creditHistory($limit, $order, $creditType);
     }
 
     /**
      * Check if the model has enough credits.
+     *
+     * @param  float  $amount  The amount to check for.
+     * @param  string|null  $creditType  Optional credit type to filter by.
      */
-    public function hasCredits(float $amount): bool
+    public function hasCredits(float $amount, ?string $creditType = null): bool
     {
-        return $this->creditBalance() >= $amount;
+        return $this->creditBalance($creditType) >= $amount;
     }
 
     /**
@@ -309,11 +349,11 @@ trait HasCredits
      *
      * @deprecated Use hasCredits() instead. Will be removed in v2.0
      */
-    public function hasEnoughCredits(float $amount): bool
+    public function hasEnoughCredits(float $amount, ?string $creditType = null): bool
     {
         trigger_error('Method hasEnoughCredits() is deprecated. Use hasCredits() instead.', E_USER_DEPRECATED);
 
-        return $this->hasCredits($amount);
+        return $this->hasCredits($amount, $creditType);
     }
 
     /**
@@ -322,9 +362,10 @@ trait HasCredits
      * Accepts a DateTimeInterface or an integer Unix timestamp (seconds or milliseconds; milliseconds are auto-detected).
      *
      * @param  \DateTimeInterface|int  $dateTime  The target date/time or Unix timestamp to query the balance at.
+     * @param  string|null  $creditType  Optional credit type to filter by.
      * @return float The running balance at or before the specified date/time, or 0.0 if no transactions exist.
      */
-    public function creditBalanceAt($dateTime): float
+    public function creditBalanceAt($dateTime, ?string $creditType = null): float
     {
         if (is_int($dateTime)) {
             // Auto-detect millisecond timestamps (values > 9999999999 are likely milliseconds)
@@ -336,23 +377,45 @@ trait HasCredits
             $dateTime = Carbon::instance($dateTime);
         }
 
-        return (float) ($this->credits()
-            ->where('created_at', '<=', $dateTime)
-            ->latest('id')
-            ->value('running_balance') ?? 0.0);
+        // Check if this is a call with just dateTime (total balance) vs explicit creditType parameter
+        $args = func_get_args();
+        $isFilteringByType = count($args) > 1;
+
+        if (!$isFilteringByType) {
+            // For total balance, get the latest running_balance at the specified date
+            return (float) ($this->credits()
+                ->where('created_at', '<=', $dateTime)
+                ->latest('id')
+                ->value('running_balance') ?? 0.0);
+        }
+
+        // For specific credit type (including explicit null), calculate sum of amounts for that type at the specified date
+        $baseQuery = $this->credits()->where('created_at', '<=', $dateTime);
+
+        if ($creditType === null) {
+            $baseQuery->whereNull('credit_type');
+        } else {
+            $baseQuery->where('credit_type', $creditType);
+        }
+
+        $credits = (clone $baseQuery)->where('type', 'credit')->sum('amount');
+        $debits = (clone $baseQuery)->where('type', 'debit')->sum('amount');
+
+        return (float) ($credits - $debits);
     }
 
     /**
      * Get the balance of the model as of a specific date and time or timestamp.
      *
      * @param  \DateTimeInterface|int  $dateTime
+     * @param  string|null  $creditType  Optional credit type to filter by.
      *
      * @deprecated Use creditBalanceAt() instead. Will be removed in v2.0
      */
-    public function getBalanceAsOf($dateTime): float
+    public function getBalanceAsOf($dateTime, ?string $creditType = null): float
     {
         trigger_error('Method getBalanceAsOf() is deprecated. Use creditBalanceAt() instead.', E_USER_DEPRECATED);
 
-        return $this->creditBalanceAt($dateTime);
+        return $this->creditBalanceAt($dateTime, $creditType);
     }
 }

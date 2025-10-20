@@ -16,6 +16,7 @@ class CreditsDeducted implements ShouldDispatchAfterCommit
      * @param  float  $newBalance  The resulting balance after the deduction.
      * @param  string|null  $description  Optional description of the deduction.
      * @param  array  $metadata  Additional metadata related to the deduction.
+     * @param  string|null  $creditType  Optional credit type/category for the transaction.
      */
     public function __construct(
         public Model $creditable,
@@ -23,6 +24,7 @@ class CreditsDeducted implements ShouldDispatchAfterCommit
         public float $amount,
         public float $newBalance,
         public ?string $description,
-        public array $metadata
+        public array $metadata,
+        public ?string $creditType = null
     ) {}
 }

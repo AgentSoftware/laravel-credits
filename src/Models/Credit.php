@@ -11,6 +11,7 @@ class Credit extends Model
         'amount',
         'description',
         'type',
+        'credit_type',
         'metadata',
         'running_balance',
         'creditable_type',
