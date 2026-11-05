@@ -38,11 +38,11 @@ jobs:
       # runtime constraints allow. Mostly transitive, so it never fails the build.
       - name: Composer audit (prefer-lowest, report only)
         run: |
-          composer update --prefer-lowest --no-dev --prefer-dist --no-interaction --no-audit
+          composer update --prefer-lowest --no-dev --prefer-dist --no-interaction --no-audit --no-scripts
           composer audit --no-dev --abandoned=report || echo "::warning::Advisories reachable at lowest constraints (report only)"
 
       # Gate: what a consumer gets on a fresh install today.
       - name: Composer audit
         run: |
-          composer update --prefer-stable --prefer-dist --no-interaction --no-audit
+          composer update --prefer-stable --prefer-dist --no-interaction --no-audit --no-scripts
           composer audit --abandoned=report
