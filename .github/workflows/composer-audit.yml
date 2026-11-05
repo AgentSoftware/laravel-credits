@@ -1,0 +1,48 @@
+name: composer-audit
+
+# Its own workflow, rather than a job in run-tests.yml, because run-tests.yml
+# only runs when PHP/composer files change, and a new advisory can land without
+# any change here.
+on:
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Same intent as street-orb/spectre-orb's composer_audit, adapted for a
+  # library: there's no committed composer.lock, so resolve the tree first.
+  # COMPOSER_NO_SECURITY_BLOCKING stops Composer 2.9+ silently skipping
+  # vulnerable versions during update, so the audit sees what the composer.json
+  # constraints actually allow.
+  composer-audit:
+    runs-on: ubuntu-latest
+    name: composer-audit
+
+    env:
+      COMPOSER_NO_SECURITY_BLOCKING: "1"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.5
+          extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, fileinfo
+          coverage: none
+
+      # Report-only: shows advisories reachable at the lowest versions our
+      # runtime constraints allow. Mostly transitive, so it never fails the build.
+      - name: Composer audit (prefer-lowest, report only)
+        run: |
+          composer update --prefer-lowest --no-dev --prefer-dist --no-interaction --no-audit
+          composer audit --no-dev --abandoned=report || echo "::warning::Advisories reachable at lowest constraints (report only)"
+
+      # Gate: what a consumer gets on a fresh install today.
+      - name: Composer audit
+        run: |
+          composer update --prefer-stable --prefer-dist --no-interaction --no-audit
+          composer audit --abandoned=report
